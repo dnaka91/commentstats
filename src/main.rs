@@ -11,7 +11,11 @@ mod scan;
 
 /// Generate statistical graphs about the code/comment rate in code repositories.
 #[derive(StructOpt)]
-#[structopt(global_setting = AppSettings::ColoredHelp)]
+#[structopt(
+    author,
+    global_setting = AppSettings::ColoredHelp,
+    global_setting = AppSettings::DeriveDisplayOrder,
+)]
 struct Opt {
     #[structopt(subcommand)]
     cmd: Command,
@@ -28,6 +32,12 @@ enum Command {
     },
     /// Load statistics from a pre-generated `stats.json` file.
     Render {
+        /// Output image width.
+        #[structopt(long, default_value = "1600")]
+        width: u32,
+        /// Output image height.
+        #[structopt(long, default_value = "1000")]
+        height: u32,
         /// One or more languages to filter the plotting output with.
         #[structopt(short, long)]
         filter: Vec<LanguageType>,
@@ -42,7 +52,12 @@ fn main() -> Result<()> {
     match opt.cmd {
         Command::ListFilters => list_filters::run(),
         Command::Scan { input } => scan::run(input)?,
-        Command::Render { filter, input } => render::run(filter, input)?,
+        Command::Render {
+            filter,
+            input,
+            width,
+            height,
+        } => render::run(filter, input, (width, height))?,
     }
 
     Ok(())

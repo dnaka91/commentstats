@@ -20,8 +20,8 @@ struct SimpleEntry {
     comments: u64,
 }
 
-pub fn run(mut filter: Vec<LanguageType>, input: PathBuf) -> Result<()> {
-    let root = SVGBackend::new("test.svg", (1600, 1000)).into_drawing_area();
+pub fn run(mut filter: Vec<LanguageType>, input: PathBuf,size:(u32,u32)) -> Result<()> {
+    let root = SVGBackend::new("test.svg", size).into_drawing_area();
     root.fill(&WHITE)?;
 
     if filter.is_empty() {
