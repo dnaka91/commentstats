@@ -6,6 +6,7 @@ use tokei::LanguageType;
 
 mod list_filters;
 mod models;
+mod progress;
 mod render;
 mod scan;
 

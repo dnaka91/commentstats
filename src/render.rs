@@ -1,28 +1,16 @@
-use std::{
-    collections::HashSet,
-    fs::File,
-    io::BufReader,
-    path::PathBuf,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    },
-    thread,
-    time::Duration,
-};
+use std::{collections::HashSet, fs::File, io::BufReader, path::PathBuf};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use bincode::Options;
 use chrono::NaiveDate;
 use itertools::{Itertools, MinMaxResult};
-use pbr::ProgressBar;
 use plotters::prelude::*;
 use rayon::prelude::*;
 use tokei::LanguageType;
 use zip::ZipArchive;
 use zstd::Decoder as ZstdDecoder;
 
-use crate::models::Entry;
+use crate::{models::Entry, progress::Progress};
 
 struct SimpleEntry {
     timestamp: NaiveDate,
@@ -104,22 +92,7 @@ fn load_data(input: PathBuf, filter: &HashSet<LanguageType>) -> Result<Vec<Simpl
 
     println!("processing data...");
 
-    let progress = Arc::new(AtomicU64::new(0));
-    let progress2 = Arc::clone(&progress);
-    let mut pb = ProgressBar::new(total_entries);
-    pb.set_width(Some(80));
-
-    let handle = thread::spawn(move || loop {
-        let p = progress2.load(Ordering::Relaxed);
-        if p >= total_entries {
-            pb.finish();
-            println!();
-            break;
-        }
-
-        pb.set(p);
-        thread::sleep(Duration::from_millis(200));
-    });
+    let (progress, updater) = Progress::new(total_entries);
 
     let data = (1..file_count + 1)
         .into_par_iter()
@@ -145,7 +118,7 @@ fn load_data(input: PathBuf, filter: &HashSet<LanguageType>) -> Result<Vec<Simpl
                     comments: filtered.1 as u64,
                 });
 
-                progress.fetch_add(1, Ordering::Relaxed);
+                updater.inc();
             }
 
             Ok(list)
@@ -155,9 +128,7 @@ fn load_data(input: PathBuf, filter: &HashSet<LanguageType>) -> Result<Vec<Simpl
             Ok(list)
         });
 
-    handle
-        .join()
-        .map_err(|_| anyhow!("failed joining progress printer thread"))?;
+    progress.wait()?;
 
     data
 }

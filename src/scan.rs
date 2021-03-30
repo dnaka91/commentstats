@@ -2,12 +2,6 @@ use std::{
     fs::File,
     io::{self, BufWriter, Write},
     path::{Path, PathBuf},
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    },
-    thread,
-    time::Duration,
 };
 
 use anyhow::{anyhow, Result};
@@ -20,7 +14,10 @@ use tokei::{Config as TokeiConfig, LanguageType};
 use zip::{write::FileOptions, ZipWriter};
 use zstd::Encoder as ZstdEncoder;
 
-use crate::models::{Entry, EntryFile};
+use crate::{
+    models::{Entry, EntryFile},
+    progress::{Progress, Updater},
+};
 
 /// The amount of chunks to create. This is a _goal_ value that means if there is not enough data
 /// it may be less.
@@ -53,23 +50,7 @@ pub fn run(input: PathBuf) -> Result<()> {
 
     println!("scanning...");
 
-    let total = oids.len() as u64;
-    let progress = Arc::new(AtomicU64::new(0));
-    let progress2 = Arc::clone(&progress);
-    let mut pb = ProgressBar::new(total);
-    pb.set_width(Some(80));
-
-    let handle = thread::spawn(move || loop {
-        let p = progress2.load(Ordering::Relaxed);
-        if p >= total {
-            pb.finish();
-            println!();
-            break;
-        }
-
-        pb.set(p);
-        thread::sleep(Duration::from_millis(200));
-    });
+    let (progress, updater) = Progress::new(oids.len() as u64);
 
     let chunk_size = MIN_CHUNK_SIZE.max(oids.len() / CHUNK_AMOUNT);
 
@@ -86,7 +67,7 @@ pub fn run(input: PathBuf) -> Result<()> {
 
             for &oid in chunk {
                 let (entry, tree) =
-                    commit_stats(&repo, oid, previous_entry, previous_tree, &progress)?;
+                    commit_stats(&repo, oid, previous_entry, previous_tree, &updater)?;
 
                 bincode.serialize_into(&mut file, &entry)?;
 
@@ -100,9 +81,7 @@ pub fn run(input: PathBuf) -> Result<()> {
         },
     )?;
 
-    handle
-        .join()
-        .map_err(|_| anyhow!("failed joining progress printer thread"))?;
+    progress.wait()?;
 
     println!("saving statistics...");
 
@@ -137,7 +116,7 @@ fn commit_stats<'a>(
     oid: Oid,
     previous_entry: Option<Entry>,
     previous_tree: Option<Tree<'_>>,
-    progress: &Arc<AtomicU64>,
+    updater: &Updater,
 ) -> Result<(Entry, Tree<'a>)> {
     let config = TokeiConfig::default();
     let commit = repo.find_commit(oid)?;
@@ -206,7 +185,7 @@ fn commit_stats<'a>(
         }
     }
 
-    progress.fetch_add(1, Ordering::Relaxed);
+    updater.inc();
 
     Ok((entry, tree))
 }
