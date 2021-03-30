@@ -1,15 +1,25 @@
 use std::{
     collections::HashSet,
     fs::File,
-    io::{BufRead, BufReader},
+    io::BufReader,
     path::PathBuf,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+    thread,
+    time::Duration,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
+use bincode::Options;
 use chrono::NaiveDate;
 use itertools::{Itertools, MinMaxResult};
+use pbr::ProgressBar;
 use plotters::prelude::*;
+use rayon::prelude::*;
 use tokei::LanguageType;
+use zip::ZipArchive;
 use zstd::Decoder as ZstdDecoder;
 
 use crate::models::Entry;
@@ -20,7 +30,7 @@ struct SimpleEntry {
     comments: u64,
 }
 
-pub fn run(mut filter: Vec<LanguageType>, input: PathBuf,size:(u32,u32)) -> Result<()> {
+pub fn run(mut filter: Vec<LanguageType>, input: PathBuf, size: (u32, u32)) -> Result<()> {
     let root = SVGBackend::new("test.svg", size).into_drawing_area();
     root.fill(&WHITE)?;
 
@@ -79,23 +89,77 @@ pub fn run(mut filter: Vec<LanguageType>, input: PathBuf,size:(u32,u32)) -> Resu
 }
 
 fn load_data(input: PathBuf, filter: &HashSet<LanguageType>) -> Result<Vec<SimpleEntry>> {
-    let input = BufReader::new(ZstdDecoder::new(File::open(input)?)?);
+    let bincode = bincode::DefaultOptions::new().allow_trailing_bytes();
 
-    input
-        .lines()
-        .map(|line| {
-            let entry = serde_json::from_str::<Entry>(&line?)?;
-            let filtered = entry
-                .filtered(filter)
-                .fold((0, 0), |acc, cs| (acc.0 + cs.code, acc.1 + cs.comments));
+    let (total_entries, file_count) = {
+        let input = BufReader::new(File::open(&input)?);
+        let mut input = ZipArchive::new(input)?;
 
-            Ok(SimpleEntry {
-                timestamp: entry.timestamp.date().naive_local(),
-                code: filtered.0 as u64,
-                comments: filtered.1 as u64,
-            })
+        let count = input.len() - 1;
+        let file = input.by_index_raw(0)?;
+        let mut file = BufReader::new(ZstdDecoder::new(file)?);
+
+        (bincode.deserialize_from::<_, u64>(&mut file)?, count)
+    };
+
+    println!("processing data...");
+
+    let progress = Arc::new(AtomicU64::new(0));
+    let progress2 = Arc::clone(&progress);
+    let mut pb = ProgressBar::new(total_entries);
+    pb.set_width(Some(80));
+
+    let handle = thread::spawn(move || loop {
+        let p = progress2.load(Ordering::Relaxed);
+        if p >= total_entries {
+            pb.finish();
+            println!();
+            break;
+        }
+
+        pb.set(p);
+        thread::sleep(Duration::from_millis(200));
+    });
+
+    let data = (1..file_count + 1)
+        .into_par_iter()
+        .try_fold(Vec::new, |mut list, i| {
+            let input = BufReader::new(File::open(&input)?);
+            let mut input = ZipArchive::new(input)?;
+            let file = input.by_index_raw(i)?;
+
+            let mut reader = ZstdDecoder::new(file)?;
+            let count = bincode.deserialize_from::<_, u64>(&mut reader)?;
+
+            list.reserve(count as usize);
+
+            for _ in 0..count {
+                let entry = bincode.deserialize_from::<_, Entry>(&mut reader)?;
+                let filtered = entry
+                    .filtered(filter)
+                    .fold((0, 0), |acc, cs| (acc.0 + cs.code, acc.1 + cs.comments));
+
+                list.push(SimpleEntry {
+                    timestamp: entry.timestamp.date().naive_local(),
+                    code: filtered.0 as u64,
+                    comments: filtered.1 as u64,
+                });
+
+                progress.fetch_add(1, Ordering::Relaxed);
+            }
+
+            Ok(list)
         })
-        .collect()
+        .try_reduce(Vec::new, |mut list, sublist| {
+            list.extend(sublist);
+            Ok(list)
+        });
+
+    handle
+        .join()
+        .map_err(|_| anyhow!("failed joining progress printer thread"))?;
+
+    data
 }
 
 fn minmax_value<T: Copy>(mmr: MinMaxResult<T>) -> Option<(T, T)> {

@@ -1,7 +1,7 @@
 use std::{
     fs::File,
-    io::{BufWriter, Write},
-    path::PathBuf,
+    io::{self, BufWriter, Write},
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -11,17 +11,31 @@ use std::{
 };
 
 use anyhow::{anyhow, Result};
+use bincode::Options;
 use chrono::prelude::*;
 use git2::{Delta, ObjectType, Oid, Repository, Sort, Tree};
 use pbr::ProgressBar;
+use rayon::prelude::*;
 use tokei::{Config as TokeiConfig, LanguageType};
+use zip::{write::FileOptions, ZipWriter};
 use zstd::Encoder as ZstdEncoder;
 
 use crate::models::{Entry, EntryFile};
 
+/// The amount of chunks to create. This is a _goal_ value that means if there is not enough data
+/// it may be less.
+const CHUNK_AMOUNT: usize = 1000;
+/// Minimum amount of items in a single chunk. The value seems to be a good trade between overhead
+/// and work split amount. Small repositories can be handled quickly so that mostly bigger repos
+/// benefit from the chunking anyways.
+const MIN_CHUNK_SIZE: usize = 1000;
+const ZSTD_COMPRESSION_DEFAULT: i32 = 11;
+
 pub fn run(input: PathBuf) -> Result<()> {
     let repo = Repository::open(&input)?;
     let mut walk = repo.revwalk()?;
+
+    println!("reading history...");
 
     walk.push_head()?;
     walk.set_sorting(Sort::TIME | Sort::REVERSE)?;
@@ -30,15 +44,26 @@ pub fn run(input: PathBuf) -> Result<()> {
         .map(|oid| oid.map_err(Into::into))
         .collect::<Result<Vec<_>>>()?;
 
+    let dir = tempfile::tempdir()?;
+    let bincode = bincode::DefaultOptions::new().allow_trailing_bytes();
+
+    let mut info_file = new_zstd_file(dir.path().join("info"))?;
+    bincode.serialize_into(&mut info_file, &(oids.len() as u64))?;
+    info_file.finish()?.flush()?;
+
+    println!("scanning...");
+
     let total = oids.len() as u64;
     let progress = Arc::new(AtomicU64::new(0));
     let progress2 = Arc::clone(&progress);
     let mut pb = ProgressBar::new(total);
+    pb.set_width(Some(80));
 
     let handle = thread::spawn(move || loop {
-        let p = progress2.load(Ordering::SeqCst);
+        let p = progress2.load(Ordering::Relaxed);
         if p >= total {
             pb.finish();
+            println!();
             break;
         }
 
@@ -46,29 +71,63 @@ pub fn run(input: PathBuf) -> Result<()> {
         thread::sleep(Duration::from_millis(200));
     });
 
-    let mut file = ZstdEncoder::new(BufWriter::new(File::create("stats.json.zst")?), 11)?;
-    file.multithread(num_cpus::get() as u32)?;
-    file.include_checksum(true)?;
-    file.include_contentsize(true)?;
+    let chunk_size = MIN_CHUNK_SIZE.max(oids.len() / CHUNK_AMOUNT);
 
-    let mut previous_entry = None;
-    let mut previous_tree = None;
+    oids.par_chunks(chunk_size).enumerate().try_for_each_init(
+        || Repository::open(&input),
+        |repo, (i, chunk)| -> Result<()> {
+            let repo = repo.as_ref().map_err(|e| anyhow!("{}", e))?;
 
-    for oid in oids {
-        let (entry, tree) = commit_stats(&repo, oid, previous_entry, previous_tree, &progress)?;
+            let mut file = new_zstd_file(dir.path().join(format!("stats-{:03}", i,)))?;
+            bincode.serialize_into(&mut file, &(chunk.len() as u64))?;
 
-        serde_json::to_writer(&mut file, &entry)?;
-        file.write_all(&[b'\n'])?;
+            let mut previous_entry = None;
+            let mut previous_tree = None;
 
-        previous_entry = Some(entry);
-        previous_tree = Some(tree);
-    }
+            for &oid in chunk {
+                let (entry, tree) =
+                    commit_stats(&repo, oid, previous_entry, previous_tree, &progress)?;
 
-    file.try_finish().map_err(|(_, e)| e)?.flush()?;
+                bincode.serialize_into(&mut file, &entry)?;
+
+                previous_entry = Some(entry);
+                previous_tree = Some(tree);
+            }
+
+            file.finish()?.flush()?;
+
+            Ok(())
+        },
+    )?;
 
     handle
         .join()
         .map_err(|_| anyhow!("failed joining progress printer thread"))?;
+
+    println!("saving statistics...");
+
+    let mut files = std::fs::read_dir(dir.path())?
+        .map(|r| r.map(|e| e.path()).map_err(Into::into))
+        .collect::<Result<Vec<_>>>()?;
+
+    files.sort();
+
+    let mut zip_file = ZipWriter::new(BufWriter::new(File::create("stats.stats")?));
+    let mut pb = ProgressBar::new(files.len() as u64);
+    pb.set_width(Some(80));
+
+    for path in &files {
+        let mut file = File::open(&path)?;
+        let name = path.file_name().unwrap().to_string_lossy();
+
+        zip_file.start_file(name, FileOptions::default())?;
+        io::copy(&mut file, &mut zip_file)?;
+
+        pb.inc();
+    }
+
+    zip_file.finish()?.flush()?;
+    pb.finish();
 
     Ok(())
 }
@@ -147,7 +206,15 @@ fn commit_stats<'a>(
         }
     }
 
-    progress.fetch_add(1, Ordering::SeqCst);
+    progress.fetch_add(1, Ordering::Relaxed);
 
     Ok((entry, tree))
+}
+
+fn new_zstd_file<'a>(path: impl AsRef<Path>) -> Result<ZstdEncoder<'a, BufWriter<File>>> {
+    ZstdEncoder::new(
+        BufWriter::new(File::create(path.as_ref())?),
+        ZSTD_COMPRESSION_DEFAULT,
+    )
+    .map_err(Into::into)
 }
