@@ -6,11 +6,11 @@ edition = "2021"
 license = "AGPL-3.0-only"
 
 [dependencies]
-anyhow = "1.0.44"
+anyhow = "1.0.52"
 bincode = "1.3.3"
 chrono = { version = "0.4.19", default-features = false, features = ["clock", "serde", "std"] }
-git2 = { version = "0.13.23", default-features = false }
-itertools = "0.10.1"
+git2 = { version = "0.13.25", default-features = false }
+itertools = "0.10.3"
 pbr = "1.0.4"
 plotters = { version = "0.3.1", default-features = false, features = [
     "datetime",
@@ -18,14 +18,14 @@ plotters = { version = "0.3.1", default-features = false, features = [
     "svg_backend",
 ] }
 rayon = "1.5.1"
-serde = { version = "1.0.130", features = ["derive"] }
+serde = { version = "1.0.133", features = ["derive"] }
 structopt = "0.3.25"
 svgcleaner = { version = "0.9.5", default-features = false }
 svgdom = "0.10.5"
 tempfile = "3.2.0"
 tokei = "12.1.2"
 zip = { version = "0.5.13", default-features = false }
-zstd = { version = "0.9.0", default-features = false }
+zstd = { version = "0.9.1", default-features = false }
 
 [profile.release]
 lto = true
