@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use structopt::{clap::AppSettings, StructOpt};
+use clap::{AppSettings,Parser,Subcommand};
 use tokei::LanguageType;
 
 mod list_filters;
@@ -11,18 +11,19 @@ mod render;
 mod scan;
 
 /// Generate statistical graphs about the code/comment rate in code repositories.
-#[derive(StructOpt)]
-#[structopt(
+#[derive(Parser)]
+#[clap(
+    about,
     author,
-    global_setting = AppSettings::ColoredHelp,
+    version,
     global_setting = AppSettings::DeriveDisplayOrder,
 )]
 struct Opt {
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     cmd: Command,
 }
 
-#[derive(StructOpt)]
+#[derive(Subcommand)]
 enum Command {
     /// List all possible languages that can be used as filters.
     ListFilters,
@@ -34,13 +35,13 @@ enum Command {
     /// Load statistics from a pre-generated `stats.json` file.
     Render {
         /// Output image width.
-        #[structopt(long, default_value = "1600")]
+        #[clap(long, default_value = "1600")]
         width: u32,
         /// Output image height.
-        #[structopt(long, default_value = "1000")]
+        #[clap(long, default_value = "1000")]
         height: u32,
         /// One or more languages to filter the plotting output with.
-        #[structopt(short, long)]
+        #[clap(short, long)]
         filter: Vec<LanguageType>,
         /// Location fo the statistics file.
         input: PathBuf,
@@ -48,7 +49,7 @@ enum Command {
 }
 
 fn main() -> Result<()> {
-    let opt = Opt::from_args_safe()?;
+    let opt = Opt::parse();
 
     match opt.cmd {
         Command::ListFilters => list_filters::run(),

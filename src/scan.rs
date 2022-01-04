@@ -67,7 +67,7 @@ pub fn run(input: PathBuf) -> Result<()> {
 
             for &oid in chunk {
                 let (entry, tree) =
-                    commit_stats(&repo, oid, previous_entry, previous_tree, &updater)?;
+                    commit_stats(repo, oid, previous_entry, previous_tree, &updater)?;
 
                 bincode.serialize_into(&mut file, &entry)?;
 
@@ -142,7 +142,7 @@ fn commit_stats<'a>(
 
                     if let Some(lang) = lang {
                         let blob = item
-                            .to_object(&repo)?
+                            .to_object(repo)?
                             .into_blob()
                             .map_err(|_| anyhow!("not a blob"))?;
 
