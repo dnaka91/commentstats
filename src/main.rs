@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use clap::{AppSettings,Parser,Subcommand};
+use clap::{AppSettings, Parser, Subcommand};
 use tokei::LanguageType;
 
 mod list_filters;
@@ -30,20 +30,22 @@ enum Command {
     /// Scan a repository and generate statistics.
     Scan {
         /// Target Git repository.
+        #[clap(value_parser)]
         input: PathBuf,
     },
     /// Load statistics from a pre-generated `stats.json` file.
     Render {
         /// Output image width.
-        #[clap(long, default_value = "1600")]
+        #[clap(long, value_parser, default_value_t = 1600)]
         width: u32,
         /// Output image height.
-        #[clap(long, default_value = "1000")]
+        #[clap(long, value_parser, default_value_t = 1000)]
         height: u32,
         /// One or more languages to filter the plotting output with.
-        #[clap(short, long)]
+        #[clap(short, long, value_parser)]
         filter: Vec<LanguageType>,
         /// Location fo the statistics file.
+        #[clap(value_parser)]
         input: PathBuf,
     },
 }
