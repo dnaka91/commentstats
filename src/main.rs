@@ -30,22 +30,20 @@ enum Command {
     /// Scan a repository and generate statistics.
     Scan {
         /// Target Git repository.
-        #[clap(value_parser)]
         input: PathBuf,
     },
     /// Load statistics from a pre-generated `stats.json` file.
     Render {
         /// Output image width.
-        #[clap(long, value_parser, default_value_t = 1600)]
+        #[clap(long, default_value_t = 1600)]
         width: u32,
         /// Output image height.
-        #[clap(long, value_parser, default_value_t = 1000)]
+        #[clap(long, default_value_t = 1000)]
         height: u32,
         /// One or more languages to filter the plotting output with.
-        #[clap(short, long, value_parser)]
+        #[clap(short, long)]
         filter: Vec<LanguageType>,
         /// Location fo the statistics file.
-        #[clap(value_parser)]
         input: PathBuf,
     },
 }
