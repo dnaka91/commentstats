@@ -6,7 +6,6 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use bincode::Options;
 use chrono::NaiveDate;
 use itertools::{Itertools, MinMaxResult};
 use plotters::prelude::*;
@@ -88,7 +87,7 @@ pub fn run(mut filter: Vec<LanguageType>, input: PathBuf, size: (u32, u32)) -> R
 }
 
 fn load_data(input: PathBuf, filter: &HashSet<LanguageType>) -> Result<Vec<SimpleEntry>> {
-    let bincode = bincode::DefaultOptions::new().allow_trailing_bytes();
+    let config = bincode::config::standard();
 
     let (total_entries, file_count) = {
         let input = BufReader::new(File::open(&input)?);
@@ -98,7 +97,10 @@ fn load_data(input: PathBuf, filter: &HashSet<LanguageType>) -> Result<Vec<Simpl
         let file = input.by_index_raw(0)?;
         let mut file = BufReader::new(ZstdDecoder::new(file)?);
 
-        (bincode.deserialize_from::<_, u64>(&mut file)?, count)
+        (
+            bincode::decode_from_std_read::<u64, _, _>(&mut file, config)?,
+            count,
+        )
     };
 
     println!("processing data...");
@@ -113,12 +115,13 @@ fn load_data(input: PathBuf, filter: &HashSet<LanguageType>) -> Result<Vec<Simpl
             let file = input.by_index_raw(i)?;
 
             let mut reader = ZstdDecoder::new(file)?;
-            let count = bincode.deserialize_from::<_, u64>(&mut reader)?;
+            let count = bincode::decode_from_std_read::<u64, _, _>(&mut reader, config)?;
 
             list.reserve(count as usize);
 
             for _ in 0..count {
-                let entry = bincode.deserialize_from::<_, Entry>(&mut reader)?;
+                let entry =
+                    bincode::serde::decode_from_std_read::<Entry, _, _>(&mut reader, config)?;
                 let filtered = entry
                     .filtered(filter)
                     .fold((0, 0), |acc, cs| (acc.0 + cs.code, acc.1 + cs.comments));

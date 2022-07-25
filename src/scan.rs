@@ -5,7 +5,6 @@ use std::{
 };
 
 use anyhow::{anyhow, Result};
-use bincode::Options;
 use chrono::prelude::*;
 use git2::{Delta, ObjectType, Oid, Repository, Sort, Tree};
 use pbr::ProgressBar;
@@ -42,10 +41,10 @@ pub fn run(input: PathBuf) -> Result<()> {
         .collect::<Result<Vec<_>>>()?;
 
     let dir = tempfile::tempdir()?;
-    let bincode = bincode::DefaultOptions::new().allow_trailing_bytes();
+    let config = bincode::config::standard();
 
     let mut info_file = new_zstd_file(dir.path().join("info"))?;
-    bincode.serialize_into(&mut info_file, &(oids.len() as u64))?;
+    bincode::encode_into_std_write(&(oids.len() as u64), &mut info_file, config)?;
     info_file.finish()?.flush()?;
 
     println!("scanning...");
@@ -60,7 +59,7 @@ pub fn run(input: PathBuf) -> Result<()> {
             let repo = repo.as_ref().map_err(|e| anyhow!("{}", e))?;
 
             let mut file = new_zstd_file(dir.path().join(format!("stats-{:03}", i,)))?;
-            bincode.serialize_into(&mut file, &(chunk.len() as u64))?;
+            bincode::encode_into_std_write(&(chunk.len() as u64), &mut file, config)?;
 
             let mut previous_entry = None;
             let mut previous_tree = None;
@@ -69,7 +68,7 @@ pub fn run(input: PathBuf) -> Result<()> {
                 let (entry, tree) =
                     commit_stats(repo, oid, previous_entry, previous_tree, &updater)?;
 
-                bincode.serialize_into(&mut file, &entry)?;
+                bincode::serde::encode_into_std_write(&entry, &mut file, config)?;
 
                 previous_entry = Some(entry);
                 previous_tree = Some(tree);
