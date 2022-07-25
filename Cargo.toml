@@ -27,3 +27,4 @@ zstd = { version = "0.11.2", default-features = false }
 
 [profile.release]
 lto = true
+strip = true
