@@ -11,13 +11,8 @@ bincode = { version = "2.0.0-rc.1", features = ["serde"] }
 chrono = { version = "0.4.19", default-features = false, features = ["clock", "serde", "std"] }
 clap = { version = "3.2.14", features = ["derive"] }
 git2 = { version = "0.14.4", default-features = false }
-itertools = "0.10.3"
 pbr = "1.0.4"
-plotters = { version = "0.3.2", default-features = false, features = [
-    "datetime",
-    "line_series",
-    "svg_backend",
-] }
+poloto = "15.2.0"
 rayon = "1.5.3"
 serde = { version = "1.0.140", features = ["derive"] }
 tempfile = "3.3.0"

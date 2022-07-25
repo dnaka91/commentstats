@@ -1,14 +1,14 @@
 use std::{
     collections::HashSet,
+    fmt::Write,
     fs::{self, File},
     io::BufReader,
     path::PathBuf,
 };
 
-use anyhow::{Context, Result};
-use chrono::NaiveDate;
-use itertools::{Itertools, MinMaxResult};
-use plotters::prelude::*;
+use anyhow::Result;
+use chrono::{NaiveDate, TimeZone};
+use poloto::{num::timestamp::UnixTime, prelude::*};
 use rayon::prelude::*;
 use tokei::LanguageType;
 use zip::ZipArchive;
@@ -23,10 +23,6 @@ struct SimpleEntry {
 }
 
 pub fn run(mut filter: Vec<LanguageType>, input: PathBuf, size: (u32, u32)) -> Result<()> {
-    let mut buf = String::new();
-    let root = SVGBackend::with_string(&mut buf, size).into_drawing_area();
-    root.fill(&WHITE)?;
-
     if filter.is_empty() {
         filter = LanguageType::list().to_owned();
     }
@@ -36,48 +32,37 @@ pub fn run(mut filter: Vec<LanguageType>, input: PathBuf, size: (u32, u32)) -> R
     let filter = filter.into_iter().collect::<HashSet<_>>();
     let data = load_data(input, &filter)?;
 
-    let (min_x, max_x) =
-        minmax_value(data.iter().map(|e| e.timestamp).minmax()).context("no data")?;
-    let max_code = data.iter().map(|e| e.code).max().context("no data")?;
-    let max_comments = data.iter().map(|e| e.comments).max().context("no data")?;
-    let max_y = max_code.max(max_comments);
-
     println!("rendering...");
 
-    let mut chart = ChartBuilder::on(&root)
-        .x_label_area_size(80)
-        .y_label_area_size(80)
-        .caption("Code over time", ("sans-serif", 50).into_font())
-        .margin(15)
-        .build_cartesian_2d(min_x..max_x, 0..max_y)?;
+    let opt = poloto::render::render_opt_builder()
+        .with_tick_lines([true, true])
+        .with_dim([size.0 as f64, size.1 as f64])
+        .build();
 
-    chart.configure_mesh().light_line_style(&WHITE).draw()?;
+    let plotter = quick_fmt_opt!(
+        opt,
+        "Code over time",
+        "Date",
+        "Lines",
+        poloto::build::markers([], [0.0]),
+        data.iter()
+            .map(|e| (
+                UnixTime::from(chrono::Utc.from_utc_date(&e.timestamp)),
+                e.code as f64
+            ))
+            .cloned_plot()
+            .line("Code"),
+        data.iter()
+            .map(|e| (
+                UnixTime::from(chrono::Utc.from_utc_date(&e.timestamp)),
+                e.comments as f64
+            ))
+            .cloned_plot()
+            .line("Comments")
+    );
 
-    chart
-        .draw_series(LineSeries::new(
-            data.iter().map(|e| (e.timestamp, e.code)),
-            &BLUE,
-        ))?
-        .label("Code")
-        .legend(|(x, y)| Rectangle::new([(x, y - 1), (x + 20, y + 1)], BLUE.filled()));
-
-    chart
-        .draw_series(LineSeries::new(
-            data.iter().map(|e| (e.timestamp, e.comments)),
-            &RED,
-        ))?
-        .label("Comments")
-        .legend(|(x, y)| Rectangle::new([(x, y - 1), (x + 20, y + 1)], RED.filled()));
-
-    chart
-        .configure_series_labels()
-        .background_style(&WHITE.mix(0.8))
-        .border_style(&BLACK)
-        .label_font(("sans-serif", 20).into_font())
-        .draw()?;
-
-    drop(chart);
-    drop(root);
+    let mut buf = String::new();
+    write!(buf, "{}", poloto::disp(|w| plotter.simple_theme(w)))?;
 
     fs::write("stats.svg", &buf)?;
 
@@ -145,12 +130,4 @@ fn load_data(input: PathBuf, filter: &HashSet<LanguageType>) -> Result<Vec<Simpl
     progress.wait()?;
 
     data
-}
-
-fn minmax_value<T: Copy>(mmr: MinMaxResult<T>) -> Option<(T, T)> {
-    match mmr {
-        MinMaxResult::NoElements => None,
-        MinMaxResult::OneElement(v) => Some((v, v)),
-        MinMaxResult::MinMax(min, max) => Some((min, max)),
-    }
 }
