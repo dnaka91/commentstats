@@ -1,3 +1,6 @@
+[advisories]
+ignore = ["RUSTSEC-2020-0071"]
+
 [licenses]
 allow = [
     "GPL-2.0",
@@ -6,4 +9,8 @@ allow = [
 allow-osi-fsf-free = "both"
 exceptions = [
     { allow = ["AGPL-3.0"], name = "commentstats", version = "*" },
+    { allow = ["Unicode-DFS-2016"], name = "unicode-ident", version = "*" },
 ]
+
+[bans]
+skip-tree = [{ name = "tokei", depth = 6 }]
