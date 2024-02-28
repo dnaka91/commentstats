@@ -1,14 +1,13 @@
 use std::{
     collections::HashSet,
-    fmt::Write,
     fs::{self, File},
     io::BufReader,
     path::PathBuf,
 };
 
 use anyhow::Result;
-use chrono::{NaiveDate, TimeZone};
-use poloto::{num::timestamp::UnixTime, prelude::*};
+use chrono::{NaiveDate, NaiveTime};
+use poloto_chrono::UnixTime;
 use rayon::prelude::*;
 use tokei::LanguageType;
 use zip::ZipArchive;
@@ -34,37 +33,30 @@ pub fn run(mut filter: Vec<LanguageType>, input: PathBuf, size: (u32, u32)) -> R
 
     println!("rendering...");
 
-    let opt = poloto::render::render_opt_builder()
+    let svg = poloto::header()
+        .with_viewbox_width(1600.0)
+        .with_dim([size.0 as f64, size.1 as f64]);
+
+    let buf = poloto::frame()
         .with_tick_lines([true, true])
-        .with_dim([size.0 as f64, size.1 as f64])
-        .build();
-
-    let plotter = quick_fmt_opt!(
-        opt,
-        "Code over time",
-        "Date",
-        "Lines",
-        poloto::build::markers([], [0.0]),
-        data.iter()
-            .map(|e| (
-                UnixTime::from(chrono::Utc.from_utc_date(&e.timestamp)),
+        .with_viewbox(svg.get_viewbox())
+        .build()
+        .data(poloto::plots!(
+            poloto::build::markers([], [0.0]),
+            poloto::build::plot("Code").line(data.iter().map(|e| (
+                UnixTime(e.timestamp.and_time(NaiveTime::default()).timestamp()),
                 e.code as f64
-            ))
-            .cloned_plot()
-            .line("Code"),
-        data.iter()
-            .map(|e| (
-                UnixTime::from(chrono::Utc.from_utc_date(&e.timestamp)),
+            ))),
+            poloto::build::plot("Comments").line(data.iter().map(|e| (
+                UnixTime(e.timestamp.and_time(NaiveTime::default()).timestamp()),
                 e.comments as f64
-            ))
-            .cloned_plot()
-            .line("Comments")
-    );
+            )))
+        ))
+        .build_and_label(("Code over time", "Date", "Lines"))
+        .append_to(svg.light_theme())
+        .render_string()?;
 
-    let mut buf = String::new();
-    write!(buf, "{}", poloto::disp(|w| plotter.simple_theme(w)))?;
-
-    fs::write("stats.svg", &buf)?;
+    fs::write("stats.svg", buf)?;
 
     println!("done");
 
@@ -112,7 +104,7 @@ fn load_data(input: PathBuf, filter: &HashSet<LanguageType>) -> Result<Vec<Simpl
                     .fold((0, 0), |acc, cs| (acc.0 + cs.code, acc.1 + cs.comments));
 
                 list.push(SimpleEntry {
-                    timestamp: entry.timestamp.date().naive_local(),
+                    timestamp: entry.timestamp.date_naive(),
                     code: filtered.0 as u64,
                     comments: filtered.1 as u64,
                 });

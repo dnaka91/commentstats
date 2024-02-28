@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use clap::{AppSettings, Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueHint};
 use tokei::LanguageType;
 
 mod list_filters;
@@ -12,12 +12,7 @@ mod scan;
 
 /// Generate statistical graphs about the code/comment rate in code repositories.
 #[derive(Parser)]
-#[clap(
-    about,
-    author,
-    version,
-    global_setting = AppSettings::DeriveDisplayOrder,
-)]
+#[command(about, author, version)]
 struct Opt {
     #[clap(subcommand)]
     cmd: Command,
@@ -30,20 +25,22 @@ enum Command {
     /// Scan a repository and generate statistics.
     Scan {
         /// Target Git repository.
+        #[arg(value_hint = ValueHint::DirPath)]
         input: PathBuf,
     },
     /// Load statistics from a pre-generated `stats.json` file.
     Render {
         /// Output image width.
-        #[clap(long, default_value_t = 1600)]
+        #[arg(long, default_value_t = 1600)]
         width: u32,
         /// Output image height.
-        #[clap(long, default_value_t = 1000)]
+        #[arg(long, default_value_t = 1000)]
         height: u32,
         /// One or more languages to filter the plotting output with.
-        #[clap(short, long)]
+        #[arg(short, long)]
         filter: Vec<LanguageType>,
         /// Location fo the statistics file.
+        #[arg(value_hint = ValueHint::FilePath)]
         input: PathBuf,
     },
 }

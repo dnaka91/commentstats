@@ -6,20 +6,21 @@ edition = "2021"
 license = "AGPL-3.0-only"
 
 [dependencies]
-anyhow = "1.0.58"
-bincode = { version = "2.0.0-rc.1", features = ["serde"] }
-chrono = { version = "0.4.19", default-features = false, features = ["clock", "serde", "std"] }
-clap = { version = "3.2.14", features = ["derive"] }
-git2 = { version = "0.14.4", default-features = false }
-pbr = "1.0.4"
-poloto = "15.2.0"
-rayon = "1.5.3"
-serde = { version = "1.0.140", features = ["derive"] }
-tempfile = "3.3.0"
+anyhow = "1.0.80"
+bincode = { version = "2.0.0-rc.3", features = ["serde"] }
+chrono = { version = "0.4.34", default-features = false, features = ["clock", "serde", "std"] }
+clap = { version = "4.5.1", features = ["derive"] }
+git2 = { version = "0.18.2", default-features = false }
+pbr = "1.1.1"
+poloto = "19.1.2"
+poloto-chrono = "0.4.0"
+rayon = "1.9.0"
+serde = { version = "1.0.197", features = ["derive"] }
+tempfile = "3.10.1"
 tokei = "12.1.2"
-zip = { version = "0.6.2", default-features = false }
-zstd = { version = "0.11.2", default-features = false }
+zip = { version = "0.6.6", default-features = false }
+zstd = { version = "0.13.0", default-features = false }
 
 [profile.release]
-lto = true
+lto = "thin"
 strip = true

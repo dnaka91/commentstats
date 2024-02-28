@@ -1,12 +1,22 @@
 [advisories]
-ignore = ["RUSTSEC-2020-0071"]
+version = 2
+ignore = [
+    "RUSTSEC-2020-0163",
+    "RUSTSEC-2021-0139",
+    "RUSTSEC-2021-0145",
+]
 
 [licenses]
-allow-osi-fsf-free = "both"
+version = 2
+allow = [
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "MIT",
+]
 exceptions = [
-    { allow = ["AGPL-3.0"], name = "commentstats", version = "*" },
-    { allow = ["Unicode-DFS-2016"], name = "unicode-ident", version = "*" },
+    { allow = ["AGPL-3.0"], name = "commentstats" },
+    { allow = ["Unicode-DFS-2016"], name = "unicode-ident" },
 ]
 
 [bans]
-skip-tree = [{ name = "tokei", depth = 6 }]
+skip-tree = [{ name = "tokei", depth = 4 }]
